@@ -11,7 +11,7 @@ sessions/
 .env
 .env.*
 !.env.example
-src/database/*.json
+src/database/
 database/lid.json
 assets/images/qris.*
 bin/yt-dlp
