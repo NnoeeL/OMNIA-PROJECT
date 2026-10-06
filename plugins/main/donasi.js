@@ -34,6 +34,7 @@ async function handler(m, { sock }) {
         '📝 *Catatan Pembayaran:*\n' +
         'Harap masukkan *Nomor WhatsApp* yang ingin dijadikan premium pada kolom keterangan / catatan donasi.\n\n' +
         '⏳ Membership akan dikirim dalam *2x24 jam* setelah pembayaran dikonfirmasi.\n\n' +
+        '📤 *Setelah donasi, kirim foto bukti transfer dengan caption .buktitf <nama rekening>, atau reply foto bukti dengan perintah tersebut.*\n\n' +
         '📌 *Keterangan:*\n' +
         'Tambahkan keterangan nomor WhatsApp yang ingin dijadikan premium.\n\n' +
         'Ketik *.premium* untuk cek apakah kamu sudah premium atau belum ✅';
