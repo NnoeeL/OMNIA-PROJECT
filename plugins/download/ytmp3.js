@@ -4,13 +4,14 @@
  * @version 4.0.0
  */
 
-const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const YTDLP = require('../../src/lib/yt-dlp');
+const runYtdlpCommand = require('../../src/lib/yt-dlp-runner');
+const { getYtdlpAuthErrorMessage } = runYtdlpCommand;
 
 const FFMPEG_PATH = ffmpegInstaller.path;
 
@@ -31,16 +32,9 @@ const pluginConfig = {
 };
 
 function runYtdlp(args) {
-    return new Promise((resolve, reject) => {
-        const fullArgs = [];
-        if (FFMPEG_PATH) {
-            fullArgs.push('--ffmpeg-location', FFMPEG_PATH);
-        }
-        fullArgs.push(...args);
-        execFile(YTDLP, fullArgs, { timeout: 120000, maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
-            if (err) reject(new Error(stderr || err.message));
-            else resolve(stdout.trim());
-        });
+    return runYtdlpCommand(args, {
+        ffmpegPath: FFMPEG_PATH,
+        maxBuffer: 100 * 1024 * 1024
     });
 }
 
@@ -72,9 +66,10 @@ async function handler(m, { sock }) {
     try {
         const json = await runYtdlp(['--dump-json', '--no-playlist', url]);
         info = JSON.parse(json);
-    } catch (e) {
+    } catch (error) {
+        console.error('[YTmp3] Gagal mengambil info video:', error.message);
         await m.react('❌');
-        return m.reply('❌ Gagal mengambil info video. Pastikan URL valid dan video tidak private.');
+        return m.reply(getYtdlpAuthErrorMessage(error) || '❌ Gagal mengambil info video. Pastikan URL valid dan video tidak private.');
     }
 
     const title = info.title || 'audio';
@@ -121,7 +116,7 @@ async function handler(m, { sock }) {
     } catch (error) {
         console.error('[YTmp3]', error.message);
         await m.react('❌');
-        await m.reply('❌ Gagal download audio.\n\n💡 Pastikan video tidak private atau age-restricted.');
+        await m.reply(getYtdlpAuthErrorMessage(error) || '❌ Gagal download audio.\n\n💡 Pastikan video tidak private atau age-restricted.');
     } finally {
         try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (error) {
             console.error('[YTmp3] Gagal menghapus direktori sementara:', error.message);

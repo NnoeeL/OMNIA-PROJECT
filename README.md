@@ -263,7 +263,7 @@ Jika memakai pairing code, isi `PAIRING_NUMBER` dengan nomor WhatsApp bot. `BOT_
 
 API key layanan AI diatur pada variabel `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, dan `OPENROUTER_API_KEY` di `.env`. Simpan file ini dengan izin terbatas (misalnya `chmod 600 .env` di Linux).
 
-Jika YouTube menolak yt-dlp dengan pesan “Sign in to confirm you're not a bot”, ekspor cookies YouTube dari browser yang sudah login ke format Netscape `cookies.txt`, salin file itu secara privat ke VPS, lalu isi `YTDLP_COOKIES_FILE` di `.env` dengan path lengkap file tersebut. Jaga file cookies seperti kata sandi: jangan kirim ke chat, jangan unggah ke Git, dan jangan bagikan ke orang lain. Setelah mengatur path, restart bot.
+Jika YouTube menolak yt-dlp dengan pesan “Sign in to confirm you're not a bot”, ekspor cookies YouTube dari browser yang sudah login ke format Netscape `cookies.txt`, salin file itu secara privat ke VPS, lalu isi `YTDLP_COOKIES_FILE` di `.env` dengan path lengkap file tersebut. Pengaturan ini digunakan oleh `.transkrip`, `.youtube`/`.yt`, dan `.ytmp3`. Jaga file cookies seperti kata sandi: jangan kirim ke chat, jangan unggah ke Git, dan jangan bagikan ke orang lain. Setelah mengatur path, restart bot.
 
 > Jika API key pernah tersimpan langsung di `config.js` atau pernah diunggah ke Git, cabut dan buat API key baru di dashboard penyedia layanan.
 
