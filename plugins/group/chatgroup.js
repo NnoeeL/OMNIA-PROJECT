@@ -1,6 +1,6 @@
 /**
  * @file plugins/group/chatgroup.js
- * @description Command .chatgroup open/close - Buka atau tutup grup
+ * @description Command .chatgroup on/off - Buka atau tutup grup
  * @author Ourin-AI Team
  * @version 1.0.0
  */
@@ -10,8 +10,8 @@ const pluginConfig = {
     alias: ['group', 'openchat', 'closechat', 'bukagrup', 'tutupgrup'],
     category: 'group',
     description: 'Buka atau tutup grup (hanya admin bisa chat)',
-    usage: '.chatgroup <open/close>',
-    example: '.chatgroup close',
+    usage: '.chatgroup <on/off>',
+    example: '.chatgroup off',
     isOwner: false,
     isPremium: false,
     isGroup: true,
@@ -39,9 +39,14 @@ async function handler(m, { sock }) {
         return m.reply('⚠️ Bot harus menjadi admin grup untuk bisa mengubah pengaturan grup!');
     }
 
-    const option = (m.text?.trim() || m.args?.[0] || '').toLowerCase();
+    const option = (m.args?.[0] || m.text?.trim() || '').toLowerCase();
+    const action = option === 'on' || option === 'open'
+        ? 'open'
+        : option === 'off' || option === 'close'
+            ? 'close'
+            : '';
 
-    if (!option || (option !== 'open' && option !== 'close')) {
+    if (!action) {
         // Cek status saat ini
         let currentStatus = 'Unknown';
         try {
@@ -55,15 +60,15 @@ async function handler(m, { sock }) {
             '🔧 *Chat Group Setting*\n\n' +
             `📊 Status saat ini: *${currentStatus}*\n\n` +
             '📝 *Cara pakai:*\n' +
-            '│ ◦ `.chatgroup open` — Buka grup (semua bisa chat)\n' +
-            '│ ◦ `.chatgroup close` — Tutup grup (hanya admin bisa chat)\n'
+            '│ ◦ `.chatgroup on` — Buka grup (semua bisa chat)\n' +
+            '│ ◦ `.chatgroup off` — Tutup grup (hanya admin bisa chat)\n'
         );
     }
 
     try {
         await m.react('⏳');
 
-        if (option === 'open') {
+        if (action === 'open') {
             // not_announcement = semua member bisa kirim pesan
             await sock.groupSettingUpdate(m.chat, 'not_announcement');
             await m.react('🔓');
@@ -73,7 +78,7 @@ async function handler(m, { sock }) {
             );
         }
 
-        if (option === 'close') {
+        if (action === 'close') {
             // announcement = hanya admin yang bisa kirim pesan
             await sock.groupSettingUpdate(m.chat, 'announcement');
             await m.react('🔒');

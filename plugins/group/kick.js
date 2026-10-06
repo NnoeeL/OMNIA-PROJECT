@@ -77,6 +77,15 @@ async function handler(m, { sock }) {
         return m.reply('❌ Tidak bisa mengeluarkan admin grup!');
     }
 
+    const targetIsMember = (m.groupMembers || []).some(participant =>
+        [participant.id, participant.lid, participant.jid, participant.phoneNumber]
+            .filter(Boolean)
+            .includes(targetJid)
+    );
+    if (!targetIsMember) {
+        return m.reply('❌ Member tersebut tidak ditemukan di grup ini.');
+    }
+
     try {
         await m.react('⏳');
 

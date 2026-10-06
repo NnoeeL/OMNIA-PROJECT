@@ -11,6 +11,7 @@ const sharp = require('sharp');
 const PAPER_PATH = path.join(__dirname, '../../assets/images/folio.jpg');
 const FONT_PATH = path.join(__dirname, '../../assets/fonts/Kalam-Regular.ttf');
 const MAX_ROWS = 39;
+const MAX_PAGES = 4;
 const MAX_TEXT_LENGTH = 3000;
 const LEFT_MARGIN = 32;
 const RIGHT_MARGIN = 676;
@@ -111,17 +112,17 @@ function renderLine(text, y, row) {
     return paths;
 }
 
-async function createHandwritingImage(text) {
+async function createHandwritingPages(text, maxPages) {
     if (text.length > MAX_TEXT_LENGTH) {
         throw new Error(`Teks terlalu panjang. Maksimal ${MAX_TEXT_LENGTH} karakter per gambar.`);
     }
 
-    const paper = await sharp(PAPER_PATH).metadata();
     const availableWidth = RIGHT_MARGIN - LEFT_MARGIN;
     const lines = wrapText(text, availableWidth);
 
-    if (lines.length > MAX_ROWS) {
-        throw new Error(`Teks terlalu panjang untuk satu lembar folio. Maksimal ${MAX_ROWS} baris, teks ini menjadi ${lines.length} baris.`);
+    const maxTotalRows = MAX_ROWS * maxPages;
+    if (lines.length > maxTotalRows) {
+        throw new Error(`Teks terlalu panjang. Maksimal ${maxTotalRows} baris (${maxPages} lembar folio), teks ini menjadi ${lines.length} baris.`);
     }
 
     const unsupported = Array.from(new Set(
@@ -133,18 +134,36 @@ async function createHandwritingImage(text) {
         throw new Error(`Font tulisan tangan belum mendukung karakter: ${unsupported.slice(0, 8).join(' ')}`);
     }
 
-    const paths = lines.map((line, row) =>
-        renderLine(line, FIRST_BASELINE + row * ROW_SPACING, row)
-    ).join('');
+    const paper = await sharp(PAPER_PATH).metadata();
+    const pages = [];
+    for (let offset = 0; offset < lines.length; offset += MAX_ROWS) {
+        const pageLines = lines.slice(offset, offset + MAX_ROWS);
+        const paths = pageLines.map((line, row) =>
+            renderLine(line, FIRST_BASELINE + row * ROW_SPACING, row)
+        ).join('');
 
-    const overlay = Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${paper.width}" height="${paper.height}"><g fill="${INK_COLOR}">${paths}</g></svg>`
-    );
+        const overlay = Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${paper.width}" height="${paper.height}"><g fill="${INK_COLOR}">${paths}</g></svg>`
+        );
 
-    return sharp(PAPER_PATH)
-        .composite([{ input: overlay }])
-        .jpeg({ quality: 92, mozjpeg: true })
-        .toBuffer();
+        pages.push(
+            await sharp(PAPER_PATH)
+                .composite([{ input: overlay }])
+                .jpeg({ quality: 92, mozjpeg: true })
+                .toBuffer()
+        );
+    }
+
+    return pages;
+}
+
+async function createHandwritingImage(text) {
+    const pages = await createHandwritingPages(text, 1);
+    return pages[0];
+}
+
+async function createHandwritingImages(text) {
+    return createHandwritingPages(text, MAX_PAGES);
 }
 
 async function handler(m) {
@@ -153,14 +172,19 @@ async function handler(m) {
         return m.reply(
             `✍️ *Tulisan Tangan di Kertas Folio*\n\n` +
             `Gunakan *.tulis <teks>* atau reply pesan teks dengan *.tulis*.\n` +
-            `Font Kalam memberi tampilan tulisan tangan. Maksimal ${MAX_ROWS} baris per gambar.`
+            `Font Kalam memberi tampilan tulisan tangan. Maksimal ${MAX_ROWS} baris per gambar dan ${MAX_PAGES} gambar folio per perintah.`
         );
     }
 
     await m.react('✍️');
     try {
-        const image = await createHandwritingImage(text);
-        await m.replyImage(image, '✍️ Tulisanmu sudah dibuat di kertas folio.');
+        const images = await createHandwritingImages(text);
+        for (let index = 0; index < images.length; index += 1) {
+            const caption = images.length > 1
+                ? `✍️ Tulisan folio (${index + 1}/${images.length})`
+                : '✍️ Tulisanmu sudah dibuat di kertas folio.';
+            await m.replyImage(images[index], caption);
+        }
         await m.react('✅');
     } catch (error) {
         console.error('[Tulis Plugin Error]:', error);
@@ -173,5 +197,6 @@ module.exports = {
     config: pluginConfig,
     handler,
     createHandwritingImage,
+    createHandwritingImages,
     wrapText
 };

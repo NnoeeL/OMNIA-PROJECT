@@ -128,6 +128,10 @@ async function sendWelcomeMessage(sock, groupJid, participant, groupMeta) {
 }
 
 async function handler(m, { sock }) {
+    if (!m.isAdmin && !m.isOwner) {
+        return m.reply('⚠️ Hanya admin grup atau owner bot yang bisa mengatur welcome message!');
+    }
+
     const db = getDatabase()
     const args = m.args || [];
     const subCommand = args[0]?.toLowerCase()

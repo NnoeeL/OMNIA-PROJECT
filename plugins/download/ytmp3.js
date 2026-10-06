@@ -45,9 +45,21 @@ function runYtdlp(args) {
 }
 
 async function handler(m, { sock }) {
-    const url = m.text?.trim();
-    if (!url) return m.reply('⚠️ Masukkan URL YouTube!\n\nContoh: .ytmp3 https://youtu.be/xxxxx');
-    if (!url.match(/youtu(\.be|be\.com)/i)) return m.reply('❌ URL tidak valid! Pastikan URL dari YouTube.');
+    const input = m.text?.trim();
+    if (!input) return m.reply('⚠️ Masukkan URL YouTube!\n\nContoh: .ytmp3 https://youtu.be/xxxxx');
+
+    let url;
+    try {
+        const parsedUrl = new URL(input);
+        const hostname = parsedUrl.hostname.toLowerCase();
+        if (!['http:', 'https:'].includes(parsedUrl.protocol) ||
+            !(hostname === 'youtu.be' || hostname === 'youtube.com' || hostname.endsWith('.youtube.com'))) {
+            throw new Error('invalid URL');
+        }
+        url = parsedUrl.toString();
+    } catch {
+        return m.reply('❌ URL tidak valid! Masukkan link dari YouTube.');
+    }
 
     if (!fs.existsSync(YTDLP)) {
         return m.reply('❌ yt-dlp belum terinstall. Hubungi owner bot.');
@@ -75,24 +87,22 @@ async function handler(m, { sock }) {
 
     await m.reply(`⏳ _Mengunduh audio: *${title}*..._`);
 
-    const tmpFile = path.join(os.tmpdir(), `ytmp3_${Date.now()}.mp3`);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ourin-ytmp3-'));
+    const outputTemplate = path.join(tempDir, 'audio.%(ext)s');
+    const outputFile = path.join(tempDir, 'audio.mp3');
 
     try {
         await runYtdlp([
             '-x', '--audio-format', 'mp3',
             '--audio-quality', '0',
             '--no-playlist',
-            '-o', tmpFile,
+            '-o', outputTemplate,
             url
         ]);
 
-        if (!fs.existsSync(tmpFile)) {
-            // yt-dlp mungkin tambah ekstensi
-            const altFile = tmpFile.replace('.mp3', '') + '.mp3';
-            if (!fs.existsSync(altFile)) throw new Error('File output tidak ditemukan');
-        }
+        if (!fs.existsSync(outputFile)) throw new Error('File output tidak ditemukan');
 
-        const audioBuffer = fs.readFileSync(tmpFile);
+        const audioBuffer = fs.readFileSync(outputFile);
 
         if (audioBuffer.length > 64 * 1024 * 1024) {
             await m.react('❌');
@@ -103,7 +113,7 @@ async function handler(m, { sock }) {
             audio: audioBuffer,
             mimetype: 'audio/mpeg',
             ptt: false,
-            fileName: `${title}.mp3`
+            fileName: `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 120) || 'audio'}.mp3`
         }, { quoted: m.message });
 
         await m.react('✅');
@@ -113,7 +123,9 @@ async function handler(m, { sock }) {
         await m.react('❌');
         await m.reply('❌ Gagal download audio.\n\n💡 Pastikan video tidak private atau age-restricted.');
     } finally {
-        try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (error) {
+            console.error('[YTmp3] Gagal menghapus direktori sementara:', error.message);
+        }
     }
 }
 

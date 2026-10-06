@@ -383,6 +383,8 @@ Berikut daftar lengkap perintah yang tersedia di OMNIA - PROJECT.
 | `.ping` | Mengecek apakah bot masih aktif dan berapa response time-nya |
 | `.runtime` | Melihat sudah berapa lama bot berjalan tanpa restart |
 | `.infobot` | Menampilkan informasi detail tentang bot |
+| `.premium` | Melihat status Premium dan limit akun |
+| `.buktitf <nama rekening>` | Mengirim foto bukti transfer donasi ke grup BUKTI-TF (bot harus bergabung ke grup) |
 
 ### Perintah Owner
 
@@ -411,6 +413,8 @@ Perintah ini hanya bisa digunakan oleh owner yang terdaftar di config.
 |----------|----------|
 | `.welcome on` | Mengaktifkan pesan selamat datang |
 | `.welcome off` | Menonaktifkan pesan selamat datang |
+| `.chatgroup on` | Membuka grup agar semua anggota bisa mengirim pesan |
+| `.chatgroup off` | Menutup grup agar hanya admin yang bisa mengirim pesan |
 | `.goodbye on` | Mengaktifkan pesan perpisahan |
 | `.goodbye off` | Menonaktifkan pesan perpisahan |
 
@@ -422,12 +426,22 @@ Perintah ini hanya bisa digunakan oleh owner yang terdaftar di config.
 | `.stikergif` | Mengubah video/GIF menjadi sticker animasi persegi 1:1 |
 | `.profile` | Melihat informasi profile user |
 | `.cekpremium` | Mengecek status premium user (apakah premium atau tidak) |
+| `.cekpremium <LID>` | Mengecek status Premium dan nomor WhatsApp berdasarkan LID |
+| `.resolution [2|3|4]` | Meningkatkan resolusi foto atau video yang dikirim/dibalas |
+| `.transkrip <tautan> [pdf|chat]` | Membuat transkrip PDF atau mengirim teks chat dari audio/video YouTube, TikTok, Instagram, atau file audio |
 | `.saran <isi saran>` | Mengirim saran bernomor ke grup saran OMNIA - PROJECT |
 | `.voiceai` | Melihat pilihan suara text-to-speech |
 | `.voiceai <1-5> <teks>` | Mengirim teks sebagai voice note dengan gaya suara pilihan |
 | `.saran <isi saran>` | Mengirim saran ke grup saran OMNIA - PROJECT |
 
 Pilihan `.voiceai`: `1` Google wanita, `2` Google pria, `3` anime boy bersuara berat dan serak, `4` anime girl bersuara lembut dan merdu, `5` robot. Contoh: `.voiceai 3 Halo, apa kabar?`.
+
+### Perintah Download
+
+| Perintah | Kegunaan |
+|----------|----------|
+| `.youtube <tautan>` / `.yt <tautan>` | Mengunduh video YouTube |
+| `.ytmp3 <tautan>` | Mengunduh audio YouTube MP3 |
 
 ### Perintah Fun
 

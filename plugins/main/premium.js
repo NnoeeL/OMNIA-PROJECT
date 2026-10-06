@@ -7,7 +7,7 @@
 
 const pluginConfig = {
     name: 'premium',
-    alias: ['prem', 'cekpremium', 'membership'],
+    alias: ['prem', 'membership'],
     category: 'main',
     description: 'Cek status premium kamu',
     usage: '.premium',
@@ -24,17 +24,37 @@ const pluginConfig = {
 /**
  * Handler untuk command premium
  */
-async function handler(m, { db, config: botConfig }) {
+async function handler(m, { sock, db, config: botConfig }) {
     const prefix = botConfig.command?.prefix || '.';
-    const user = db.getUser(m.sender);
+    let alternateJid = null;
+    const mapping = sock?.signalRepository?.lidMapping;
 
-    if (m.isPremium || m.isOwner) {
+    try {
+        if (m.sender.endsWith('@lid') && mapping?.getPNForLID) {
+            alternateJid = await mapping.getPNForLID(m.sender);
+        } else if (m.sender.endsWith('@s.whatsapp.net') && mapping?.getLIDForPN) {
+            alternateJid = await mapping.getLIDForPN(m.sender);
+        }
+    } catch (error) {
+        console.error('[Premium] Gagal mencari pasangan LID/nomor:', error.message);
+    }
+
+    const userJids = [...new Set([m.sender, alternateJid].filter(Boolean))];
+    const isOwner = m.isOwner || userJids.some(jid => botConfig.isOwner(jid));
+    const isPremium = m.isPremium || userJids.some(jid => botConfig.isPremium(jid, db));
+    const users = userJids.map(jid => db.getUser(jid));
+    const phoneJid = userJids.find(jid => jid.endsWith('@s.whatsapp.net'));
+    const user = users.find(candidate => candidate?.isPremium) ||
+        (phoneJid ? db.getUser(phoneJid) : null) ||
+        users.find(Boolean);
+
+    if (isPremium || isOwner) {
         // User adalah premium
         let expiredText = 'Lifetime';
 
         // Cek apakah ada data expired premium
-        if (user?.premiumExpired) {
-            const expDate = new Date(user.premiumExpired);
+        if (user?.premiumExpiredAt) {
+            const expDate = new Date(user.premiumExpiredAt);
             const now = new Date();
             const diffMs = expDate - now;
             const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -46,7 +66,7 @@ async function handler(m, { db, config: botConfig }) {
             }
         }
 
-        if (m.isOwner) {
+        if (isOwner) {
             expiredText = 'Lifetime (Owner)';
         }
 
@@ -56,6 +76,7 @@ async function handler(m, { db, config: botConfig }) {
             '│ ✅ *Status:* Aktif\n' +
             `│ 👤 *Nama:* ${m.pushName || 'User'}\n` +
             `│ ⏳ *Expired:* ${expiredText}\n` +
+            '│ 📊 *Limit:* ∞\n' +
             '│\n' +
             '│ Kamu bisa menikmati semua\n' +
             '│ fitur bot tanpa batas! 🚀\n' +

@@ -45,9 +45,21 @@ function runYtdlp(args) {
 }
 
 async function handler(m, { sock }) {
-    const url = m.text?.trim();
-    if (!url) return m.reply('⚠️ Masukkan URL YouTube!\n\nContoh: .yt https://youtu.be/xxxxx');
-    if (!url.match(/youtu(\.be|be\.com)/i)) return m.reply('❌ URL tidak valid! Pastikan URL dari YouTube.');
+    const input = m.text?.trim();
+    if (!input) return m.reply('⚠️ Masukkan URL YouTube!\n\nContoh: .yt https://youtu.be/xxxxx');
+
+    let url;
+    try {
+        const parsedUrl = new URL(input);
+        const hostname = parsedUrl.hostname.toLowerCase();
+        if (!['http:', 'https:'].includes(parsedUrl.protocol) ||
+            !(hostname === 'youtu.be' || hostname === 'youtube.com' || hostname.endsWith('.youtube.com'))) {
+            throw new Error('invalid URL');
+        }
+        url = parsedUrl.toString();
+    } catch {
+        return m.reply('❌ URL tidak valid! Masukkan link dari YouTube.');
+    }
 
     if (!fs.existsSync(YTDLP)) {
         return m.reply('❌ yt-dlp belum terinstall. Hubungi owner bot.');
@@ -74,7 +86,8 @@ async function handler(m, { sock }) {
 
     await m.reply(`⏳ _Mengunduh video: *${title}*..._`);
 
-    const tmpFile = path.join(os.tmpdir(), `ytvideo_${Date.now()}.mp4`);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ourin-ytvideo-'));
+    const tmpFile = path.join(tempDir, 'video.mp4');
 
     try {
         await runYtdlp([
@@ -106,7 +119,9 @@ async function handler(m, { sock }) {
         await m.react('❌');
         await m.reply('❌ Gagal download video.\n\n💡 Pastikan video tidak private atau age-restricted.');
     } finally {
-        try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (error) {
+            console.error('[YouTube] Gagal menghapus direktori sementara:', error.message);
+        }
     }
 }
 

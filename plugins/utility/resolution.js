@@ -1,17 +1,23 @@
 /**
  * @file plugins/utility/resolution.js
- * @description Meningkatkan resolusi (upscale) foto dengan batas maksimal hasil 10MB
+ * @description Meningkatkan resolusi foto atau video
  * @author Ourin-AI Team
  * @version 1.0.0
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const sharp = require('sharp');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const { formatFileSize } = require('../../src/lib/formatter');
 
 const MAX_RESULT_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_INPUT_SIZE = 10 * 1024 * 1024;  // Input juga dibatasi 10 MB
+const MAX_VIDEO_SIZE = 64 * 1024 * 1024;
+const execFileAsync = promisify(execFile);
 
 /**
  * Konfigurasi plugin resolution
@@ -21,8 +27,8 @@ const pluginConfig = {
     name: 'resolution',
     alias: ['res', 'hd', 'upscale', 'enhance', 'enhancephoto'],
     category: 'utility',
-    description: 'Tingkatkan resolusi foto (upscale 2x/3x/4x) dengan batas hasil 10MB',
-    usage: '.resolution [2|3|4] (reply gambar atau kirim gambar dengan caption)',
+    description: 'Tingkatkan resolusi foto atau video (upscale 2x/3x/4x)',
+    usage: '.resolution [2|3|4] (reply foto/video atau kirim dengan caption)',
     example: '.resolution 2',
     isOwner: false,
     isPremium: false,
@@ -134,25 +140,22 @@ async function upscaleImage(buffer, scale) {
  * @param {Object} context - Handler context
  */
 async function handler(m, { sock }) {
-    // Deteksi apakah ada gambar (pesan langsung maupun quoted)
+    const media = m.quoted?.isMedia ? m.quoted : m.isMedia ? m : null;
     const isImage = m.isImage || (m.quoted && m.quoted.isImage) ||
                     (m.quoted?.isDocument && m.quoted?.mimetype?.startsWith('image/')) ||
                     (m.isDocument && m.mimetype?.startsWith('image/'));
+    const isVideo = m.isVideo || m.quoted?.isVideo ||
+                    m.quoted?.mimetype?.startsWith('video/') ||
+                    m.mimetype?.startsWith('video/');
 
-    if (!isImage) {
-        let helpText = `🔍 *Image Resolution Enhancer*\n\n`;
-        helpText += `Meningkatkan resolusi foto secara otomatis menggunakan algoritma *Lanczos3 + Unsharp Masking*.\n\n`;
+    if (!isImage && !isVideo) {
+        let helpText = `🔍 *Media Resolution Enhancer*\n\n`;
+        helpText += `Meningkatkan resolusi foto dengan *Lanczos3* atau video dengan FFmpeg.\n\n`;
         helpText += `📌 *Cara Penggunaan:*\n`;
-        helpText += `• \`${m.prefix}resolution 2\` → Upscale 2x (default)\n`;
-        helpText += `• \`${m.prefix}resolution 3\` → Upscale 3x\n`;
-        helpText += `• \`${m.prefix}resolution 4\` → Upscale 4x\n\n`;
-        helpText += `💡 *Tips:*\n`;
-        helpText += `Kirim gambar + caption *${m.prefix}resolution [skala]*, atau\n`;
-        helpText += `balas (reply) gambar dengan *${m.prefix}resolution [skala]*\n\n`;
+        helpText += `• Kirim atau reply foto/video dengan *${m.prefix}resolution [2|3|4]*\n\n`;
         helpText += `⚠️ *Ketentuan:*\n`;
-        helpText += `• Hanya mendukung *foto/gambar* (bukan video)\n`;
-        helpText += `• Input maks: *10 MB*\n`;
-        helpText += `• Hasil maks: *10 MB* (disesuaikan otomatis jika melebihi)\n`;
+        helpText += `• Foto: input dan hasil maksimal *10 MB*\n`;
+        helpText += `• Video: input dan hasil maksimal *64 MB*\n`;
         helpText += `• Rekomendasi: gunakan *2x* untuk hasil terbaik`;
         return m.reply(helpText);
     }
@@ -162,30 +165,62 @@ async function handler(m, { sock }) {
     const scale = Math.min(Math.max(rawScale, 2), 4); // Klem di antara 2-4
 
     // Pra-cek ukuran input
-    const estimatedSize = m.quoted?.fileLength || m.fileLength;
-    if (estimatedSize && estimatedSize > MAX_INPUT_SIZE) {
-        return m.reply(`❌ Ukuran gambar terlalu besar (*${formatFileSize(estimatedSize)}*)!\nBatas input maksimal adalah *10 MB*.`);
+    const inputLimit = isVideo ? MAX_VIDEO_SIZE : MAX_INPUT_SIZE;
+    const estimatedSize = media?.fileLength || m.quoted?.fileLength || m.fileLength;
+    if (estimatedSize && estimatedSize > inputLimit) {
+        return m.reply(`❌ Ukuran ${isVideo ? 'video' : 'gambar'} terlalu besar (*${formatFileSize(estimatedSize)}*)!\nBatas input maksimal adalah *${formatFileSize(inputLimit)}*.`);
     }
 
     await m.react('⏳');
 
     try {
         // Unduh buffer
-        let buffer = null;
-        if (m.quoted && m.quoted.isMedia) {
-            buffer = await m.quoted.download();
-        } else if (m.isMedia) {
-            buffer = await m.download();
-        }
+        const buffer = media ? await media.download() : null;
 
         if (!buffer || buffer.length === 0) {
             await m.react('❌');
-            return m.reply('❌ Gagal mengunduh gambar. Silakan coba lagi.');
+            return m.reply(`❌ Gagal mengunduh ${isVideo ? 'video' : 'gambar'}. Silakan coba lagi.`);
         }
 
-        if (buffer.length > MAX_INPUT_SIZE) {
+        if (buffer.length > inputLimit) {
             await m.react('❌');
-            return m.reply(`❌ Ukuran gambar terlalu besar (*${formatFileSize(buffer.length)}*)!\nBatas input maksimal adalah *10 MB*.`);
+            return m.reply(`❌ Ukuran ${isVideo ? 'video' : 'gambar'} terlalu besar (*${formatFileSize(buffer.length)}*)!\nBatas input maksimal adalah *${formatFileSize(inputLimit)}*.`);
+        }
+
+        if (isVideo) {
+            if (!ffmpegInstaller.path || !fs.existsSync(ffmpegInstaller.path)) {
+                throw new Error('FFmpeg tidak tersedia di server; video tidak dapat diproses.');
+            }
+
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ourin-resolution-'));
+            const inputPath = path.join(tempDir, 'input-video');
+            const outputPath = path.join(tempDir, 'upscaled.mp4');
+            try {
+                fs.writeFileSync(inputPath, buffer);
+                await execFileAsync(ffmpegInstaller.path, [
+                    '-y',
+                    '-i', inputPath,
+                    '-vf', `scale=trunc(iw*${scale}/2)*2:trunc(ih*${scale}/2)*2:flags=lanczos`,
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '24',
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-movflags', '+faststart',
+                    outputPath
+                ], { timeout: 180000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
+
+                const output = fs.readFileSync(outputPath);
+                if (output.length > MAX_VIDEO_SIZE) {
+                    throw new Error('Ukuran video hasil melebihi 64 MB. Coba skala lebih kecil atau video yang lebih pendek.');
+                }
+
+                await m.replyVideo(output, `🎬 *Upscale Video Berhasil!*\n\n📐 Skala: *${scale}x*\n📦 Ukuran hasil: *${formatFileSize(output.length)}*`);
+                await m.react('✅');
+            } finally {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            }
+            return;
         }
 
         // Cek resolusi asli — jika sudah sangat besar, larang scale 4x
@@ -223,7 +258,7 @@ async function handler(m, { sock }) {
     } catch (error) {
         console.error('[Resolution Plugin Error]:', error);
         await m.react('❌');
-        await m.reply(`❌ Terjadi kesalahan saat memproses gambar:\n_${error.message || 'Error tidak diketahui'}_`);
+        await m.reply(`❌ Terjadi kesalahan saat memproses ${isVideo ? 'video' : 'gambar'}:\n_${error.message || 'Error tidak diketahui'}_`);
     }
 }
 

@@ -406,9 +406,21 @@ async function serialize(sock, msg, store = {}) {
             m.groupName = m.groupMetadata.subject || '';
             m.groupDesc = m.groupMetadata.desc || '';
             m.groupMembers = m.groupMetadata.participants || [];
-            m.groupAdmins = m.groupMembers.filter(p => p.admin).map(p => p.id);
-            m.isAdmin = m.groupAdmins.includes(m.sender);
-            m.isBotAdmin = m.groupAdmins.includes(decodeJid(sock.user.id));
+            const participantJids = participant => [
+                participant.id,
+                participant.lid,
+                participant.jid,
+                participant.phoneNumber
+            ].filter(Boolean).flatMap(jid => [jid, decodeJid(jid)]).filter(Boolean);
+            m.groupAdmins = m.groupMembers
+                .filter(participant => participant.admin)
+                .flatMap(participantJids);
+            m.isAdmin = m.groupMembers.some(participant =>
+                participantJids(participant).includes(m.sender)
+            );
+            m.isBotAdmin = m.groupMembers.some(participant =>
+                participantJids(participant).includes(decodeJid(sock.user.id))
+            );
         } catch (error) {
             // Silent fail for group metadata
         }

@@ -11,7 +11,7 @@
  */
 const pluginConfig = {
     name: 'cekpremium',
-    alias: ['premium', 'cekprem', 'premiumcheck'],
+    alias: ['cekprem', 'premiumcheck'],
     category: 'utility',
     description: 'Mengecek status premium user',
     usage: '.cekpremium [@user]',
@@ -73,35 +73,65 @@ function formatExpiredDate(ms) {
 async function handler(m, { sock, db, config }) {
     let targetJid = m.sender;
     let targetName = m.pushName;
-    let isSelf = true;
     
-    // Cek apakah ada mention
+    // LID may be supplied directly as digits or as a full JID.
     if (m.mentionedJid && m.mentionedJid.length > 0) {
         targetJid = m.mentionedJid[0];
-        targetName = targetJid.split('@')[0];
-        isSelf = false;
+    } else if (m.args?.[0]) {
+        const target = m.args[0].trim();
+        if (/^\d+$/.test(target)) {
+            targetJid = `${target}@lid`;
+        } else if (/^\d+@(lid|s\.whatsapp\.net)$/.test(target)) {
+            targetJid = target;
+        } else {
+            return m.reply('❌ Masukkan LID berupa angka, JID, atau mention pengguna.');
+        }
     }
     
-    // Ambil data user dari database
-    const user = db.getUser(targetJid);
+    let phoneJid = targetJid.endsWith('@s.whatsapp.net') ? targetJid : null;
+    let lidJid = targetJid.endsWith('@lid') ? targetJid : null;
+
+    try {
+        if (lidJid && sock.signalRepository?.lidMapping?.getPNForLID) {
+            phoneJid = await sock.signalRepository.lidMapping.getPNForLID(lidJid);
+        } else if (phoneJid && sock.signalRepository?.lidMapping?.getLIDForPN) {
+            lidJid = await sock.signalRepository.lidMapping.getLIDForPN(phoneJid);
+        }
+    } catch (error) {
+        console.error('[CekPremium] Gagal mencari pasangan LID/nomor:', error.message);
+    }
+
+    const targetUser = db.getUser(targetJid);
+    const phoneUser = phoneJid ? db.getUser(phoneJid) : null;
+    const userCandidates = [targetUser, phoneUser].filter(Boolean);
+
+    if (targetJid !== m.sender) {
+        targetName = userCandidates.find(candidate => candidate.isPremium)?.name ||
+            phoneUser?.name ||
+            targetUser?.name ||
+            targetJid.split('@')[0];
+    }
     
     // Cek status owner
-    const isOwnerUser = config.isOwner(targetJid);
+    const isOwnerUser = config.isOwner(targetJid) || (phoneJid && config.isOwner(phoneJid));
     
     // Cek status premium
-    const isPremiumUser = config.isPremium(targetJid, db);
+    const isPremiumUser = config.isPremium(targetJid, db) ||
+        (phoneJid && config.isPremium(phoneJid, db));
+    const refreshedCandidates = [db.getUser(targetJid), phoneJid ? db.getUser(phoneJid) : null]
+        .filter(Boolean);
+    const user = refreshedCandidates.find(candidate => candidate.isPremium) ||
+        (phoneJid ? db.getUser(phoneJid) : null) ||
+        db.getUser(targetJid);
     
-    let statusText = '';
     let statusEmoji = '';
     let premiumInfo = '';
     
     if (isOwnerUser) {
         statusEmoji = '👑';
-        statusText = 'Owner';
         premiumInfo = '\n📌 *Status*: Owner (Premium Unlimited)';
     } else if (isPremiumUser) {
         statusEmoji = '💎';
-        statusText = 'Premium User';
         
         // Cek expired time
         if (user && user.premiumExpiredAt) {
@@ -109,7 +139,6 @@ async function handler(m, { sock, db, config }) {
             if (now > user.premiumExpiredAt) {
                 // Premium sudah expired
                 statusEmoji = '⚠️';
-                statusText = 'Premium Expired';
                 premiumInfo = `\n📌 *Status*: Premium Expired`;
                 premiumInfo += `\n⏰ *Expired*: ${formatExpiredDate(user.premiumExpiredAt)}`;
             } else {
@@ -124,20 +153,19 @@ async function handler(m, { sock, db, config }) {
         }
     } else {
         statusEmoji = '🆓';
-        statusText = 'Free User';
         premiumInfo = '\n📌 *Status*: Bukan Premium User';
     }
     
     // Format pesan
     let message = `╭─「 ${statusEmoji} CEK PREMIUM 」─\n│\n`;
     message += `│ 👤 *Nama*: ${targetName}\n`;
-    message += `│ 📱 *Nomor*: ${targetJid.split('@')[0]}\n`;
+    message += `│ 🆔 *LID*: ${lidJid?.split('@')[0] || '-'}\n`;
+    message += `│ 📱 *Nomor WhatsApp*: ${phoneJid?.split('@')[0] || (targetJid.endsWith('@s.whatsapp.net') ? targetJid.split('@')[0] : '-')}\n`;
     message += `│ ${premiumInfo.replace(/\n/g, '\n│ ')}\n`;
     
     // Tambah informasi limit
-    if (user) {
-        message += `│\n│ 📊 *Limit Tersisa*: ${user.limit || 25}\n`;
-    }
+    const remainingLimit = isPremiumUser || isOwnerUser ? '∞' : String(user?.limit ?? 0);
+    message += `│\n│ 📊 *Limit Tersisa*: ${remainingLimit}\n`;
     
     message += `│\n╰────────────────\n`;
     

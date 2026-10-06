@@ -1,6 +1,6 @@
 /**
  * @file plugins/utility/transkrip.js
- * @description Transkripsi audio dari file, YouTube, atau TikTok
+ * @description Transkripsi audio dari file, YouTube, TikTok, atau Instagram
  * @author Ourin-AI Team
  * @version 1.0.0
  */
@@ -19,14 +19,15 @@ const execFileAsync = promisify(execFile);
 const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
 const MAX_LINK_DURATION = 10 * 60;
 const TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
+const TRANSCRIPT_FONT = path.join(__dirname, '../../assets/fonts/Kalam-Regular.ttf');
 
 const pluginConfig = {
     name: 'transkrip',
     alias: ['transcrypt', 'transcribe', 'transkripsi', 'transrypt'],
     category: 'utility',
-    description: 'Ubah audio, video YouTube, atau TikTok menjadi teks',
-    usage: '.transkrip (reply/kirim audio) atau .transkrip <link YouTube/TikTok>',
-    example: '.transkrip https://youtu.be/xxxxx',
+    description: 'Ubah audio atau video YouTube, TikTok, dan Instagram menjadi transkrip PDF atau chat',
+    usage: '.transkrip <link YouTube/TikTok/Instagram> [pdf|chat] atau reply/kirim audio [pdf|chat]',
+    example: '.transkrip https://youtu.be/xxxxx chat',
     isOwner: false,
     isPremium: false,
     isGroup: false,
@@ -52,8 +53,10 @@ function parseSupportedUrl(value) {
         hostname.endsWith('.youtube.com');
     const isTikTok = hostname === 'tiktok.com' ||
         hostname.endsWith('.tiktok.com');
+    const isInstagram = hostname === 'instagram.com' ||
+        hostname.endsWith('.instagram.com');
 
-    return isYouTube || isTikTok ? url.toString() : null;
+    return isYouTube || isTikTok || isInstagram ? url.toString() : null;
 }
 
 async function runYtdlp(args) {
@@ -202,7 +205,7 @@ function createTranscriptPdf(transcript, title) {
             .stroke();
         doc.moveDown(1);
         doc.fillColor('#1e293b')
-            .font('Helvetica')
+            .font(fs.existsSync(TRANSCRIPT_FONT) ? TRANSCRIPT_FONT : 'Helvetica')
             .fontSize(11)
             .text(transcript, {
                 align: 'left',
@@ -241,19 +244,22 @@ function getAudioMessage(m) {
 }
 
 async function handler(m) {
-    const input = m.text?.trim();
+    const args = [...(m.args || [])];
+    const formatArg = args.at(-1)?.toLowerCase();
+    const outputFormat = ['pdf', 'chat'].includes(formatArg) ? args.pop().toLowerCase() : 'pdf';
+    const input = args.join(' ').trim();
     const audioMessage = getAudioMessage(m);
     const url = input ? parseSupportedUrl(input) : null;
 
     if (input && !url) {
-        return m.reply('❌ Link tidak valid. Gunakan link HTTPS dari YouTube atau TikTok.');
+        return m.reply('❌ Link tidak valid. Gunakan link HTTPS dari YouTube, TikTok, atau Instagram, lalu pilih `pdf` atau `chat` (opsional).');
     }
     if (!url && !audioMessage) {
         return m.reply(
             `🎙️ *Transkripsi Audio*\n\n` +
-            `• Kirim/reply file audio dengan caption *${m.prefix}transkrip*\n` +
-            `• Atau kirim *${m.prefix}transkrip <link YouTube/TikTok>*\n\n` +
-            `Hasil dikirim sebagai PDF. Batas: audio maksimal 25 MB, video dari link maksimal 10 menit.`
+            `• Kirim/reply file audio dengan caption *${m.prefix}transkrip [pdf|chat]*\n` +
+            `• Atau kirim *${m.prefix}transkrip <link YouTube/TikTok/Instagram> [pdf|chat]*\n\n` +
+            `Format default: PDF. Batas: audio maksimal 25 MB, video dari link maksimal 10 menit.`
         );
     }
 
@@ -305,19 +311,42 @@ async function handler(m) {
 
         const transcript = await transcribeAudio(buffer, mimetype, filename);
         const pdfTitle = title || 'Hasil Transkripsi';
-        const pdfBuffer = await createTranscriptPdf(transcript, pdfTitle);
-        const safeTitle = pdfTitle
-            .normalize('NFKD')
-            .replace(/[^\w -]/g, '')
-            .trim()
-            .replace(/\s+/g, '_')
-            .slice(0, 80) || 'transkrip';
-        await m.replyDocument(
-            pdfBuffer,
-            `${safeTitle}_transkrip.pdf`,
-            'application/pdf',
-            { caption: `📝 Transkripsi selesai${title ? `: ${title}` : ''}` }
-        );
+        if (outputFormat === 'chat') {
+            const maxChunkLength = 3500;
+            const chunks = [];
+            let remaining = transcript;
+            while (remaining.length > maxChunkLength) {
+                let splitAt = remaining.lastIndexOf('\n', maxChunkLength);
+                if (splitAt < maxChunkLength / 2) {
+                    splitAt = remaining.lastIndexOf(' ', maxChunkLength);
+                }
+                if (splitAt < maxChunkLength / 2) splitAt = maxChunkLength;
+                else splitAt += 1;
+                chunks.push(remaining.slice(0, splitAt));
+                remaining = remaining.slice(splitAt);
+            }
+            chunks.push(remaining);
+
+            for (let i = 0; i < chunks.length; i += 1) {
+                const part = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+                const heading = `📝 Transkripsi${title ? `: ${title}` : ''}${part}\n\n`;
+                await m.reply(`${heading}${chunks[i]}`);
+            }
+        } else {
+            const pdfBuffer = await createTranscriptPdf(transcript, pdfTitle);
+            const safeTitle = pdfTitle
+                .normalize('NFKD')
+                .replace(/[^\w -]/g, '')
+                .trim()
+                .replace(/\s+/g, '_')
+                .slice(0, 80) || 'transkrip';
+            await m.replyDocument(
+                pdfBuffer,
+                `${safeTitle}_transkrip.pdf`,
+                'application/pdf',
+                { caption: `📝 Transkripsi selesai${title ? `: ${title}` : ''}` }
+            );
+        }
         await m.react('✅');
     } catch (error) {
         console.error('[Transkrip Plugin Error]:', error);
