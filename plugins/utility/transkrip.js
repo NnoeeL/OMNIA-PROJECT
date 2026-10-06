@@ -20,6 +20,7 @@ const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
 const MAX_LINK_DURATION = 10 * 60;
 const TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const TRANSCRIPT_FONT = path.join(__dirname, '../../assets/fonts/Kalam-Regular.ttf');
+const YTDLP_COOKIES_FILE = process.env.YTDLP_COOKIES_FILE?.trim();
 
 const pluginConfig = {
     name: 'transkrip',
@@ -63,6 +64,13 @@ async function runYtdlp(args) {
     const fullArgs = [];
     if (ffmpegInstaller.path) {
         fullArgs.push('--ffmpeg-location', ffmpegInstaller.path);
+    }
+    if (YTDLP_COOKIES_FILE) {
+        const cookiesPath = path.resolve(YTDLP_COOKIES_FILE);
+        if (!fs.existsSync(cookiesPath)) {
+            throw new Error(`File cookies yt-dlp tidak ditemukan: ${cookiesPath}`);
+        }
+        fullArgs.push('--cookies', cookiesPath);
     }
     fullArgs.push(...args);
 
